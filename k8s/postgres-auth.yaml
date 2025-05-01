@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-auth-pvc
+  namespace: spring-microservices
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-auth-secret
+  namespace: spring-microservices
+type: Opaque
+data:
+  POSTGRES_USER: cG9zdGdyZXM=  # postgres
+  POSTGRES_PASSWORD: cG9zdGdyZXM=  # postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-auth
+  namespace: spring-microservices
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-auth
+  template:
+    metadata:
+      labels:
+        app: postgres-auth
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: authdb
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-auth-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-auth-secret
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: postgres-auth-data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "postgres"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: postgres-auth-data
+        persistentVolumeClaim:
+          claimName: postgres-auth-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-auth
+  namespace: spring-microservices
+spec:
+  selector:
+    app: postgres-auth
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP

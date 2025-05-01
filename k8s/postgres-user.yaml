@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-user-pvc
+  namespace: spring-microservices
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-user-secret
+  namespace: spring-microservices
+type: Opaque
+data:
+  POSTGRES_USER: cG9zdGdyZXM=  # postgres
+  POSTGRES_PASSWORD: cG9zdGdyZXM=  # postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-user
+  namespace: spring-microservices
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-user
+  template:
+    metadata:
+      labels:
+        app: postgres-user
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: userdb
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-user-secret
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-user-secret
+              key: POSTGRES_PASSWORD
+        volumeMounts:
+        - name: postgres-user-data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "postgres"]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: postgres-user-data
+        persistentVolumeClaim:
+          claimName: postgres-user-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-user
+  namespace: spring-microservices
+spec:
+  selector:
+    app: postgres-user
+  ports:
+  - port: 5432
+    targetPort: 5432
+  type: ClusterIP
